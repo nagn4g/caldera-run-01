@@ -12,13 +12,34 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// Fail before copying when the deliverable itself is incomplete: a missing entry HTML, the wrong
+// number of screenshots, or a screenshot over the scorer's 256 KiB cap. The messages name what to
+// fix so a run never spends time writing an output the gate would reject anyway.
+if (!existsSync(join(here, 'game', 'index.html'))) {
+  throw new Error('game/index.html missing');
+}
+
+const shotsDir = join(here, 'screenshots');
+const shots = existsSync(shotsDir)
+  ? readdirSync(shotsDir).filter((name) => statSync(join(shotsDir, name)).isFile())
+  : [];
+if (shots.length < 3 || shots.length > 4) {
+  throw new Error(`screenshots/ must contain 3 or 4 files, found ${shots.length}`);
+}
+for (const name of shots) {
+  const bytes = statSync(join(shotsDir, name)).size;
+  if (bytes > 262144) {
+    throw new Error(`screenshot ${name} is ${bytes} bytes, over the 262144-byte cap`);
+  }
+}
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
