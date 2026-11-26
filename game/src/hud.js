@@ -13,7 +13,7 @@ const WHITE = '#f2f6fa';
 const RED = '#ff5a4a';
 const CYAN = '#63e6ff';
 
-function tape(ctx, x, y, w, h, value, step, minor, major, label, unit, reverse, floor = -Infinity) {
+function tape(ctx, x, y, w, h, value, step, minor, major, label, unit, reverse, floor = -Infinity, rightAligned = false) {
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, 6);
@@ -65,10 +65,21 @@ function tape(ctx, x, y, w, h, value, step, minor, major, label, unit, reverse, 
   ctx.restore();
 
   ctx.fillStyle = 'rgba(214,232,244,0.8)';
-  ctx.font = MONO;
-  ctx.textAlign = 'center';
-  ctx.fillText(label, x + w / 2, y + h + 18);
-  if (unit) ctx.fillText(unit, x + w / 2, y + h + 34);
+  if (rightAligned) {
+    // Right tape caption. "RAD ALT" is 63px wide but the tape is only 62px, so centring it under
+    // the tape left it overhanging both edges and hugging the frame. Right-align it to the tape
+    // so it grows left into open sky and always clears the frame edge; the tape itself also sits
+    // further in (see the RAD ALT call) so the pointer box keeps a safe margin.
+    ctx.textAlign = 'right';
+    ctx.font = MONO;
+    ctx.fillText(label, x + w, y + h + 18);
+    if (unit) ctx.fillText(unit, x + w, y + h + 34);
+  } else {
+    ctx.font = MONO;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + w / 2, y + h + 18);
+    if (unit) ctx.fillText(unit, x + w / 2, y + h + 34);
+  }
 }
 
 function bar(ctx, x, y, w, h, frac, color, label, value) {
@@ -149,7 +160,7 @@ export function createHud(canvas) {
     // Altitude, right, radar-style: the ground band sits at the bottom of the tape. The live
     // readout is floored at zero, so a plane below the strip datum still reads 0 FT, never -N.
     const radAlt = Math.max(0, Math.min(600, state.altitude));
-    tape(ctx, wv - pad - 74, tapeY, 62, tapeH, radAlt, 600, 25, 50, 'RAD ALT', 'FT', false, 0);
+    tape(ctx, wv - pad - 84, tapeY, 62, tapeH, radAlt, 600, 25, 50, 'RAD ALT', 'FT', false, 0, true);
 
     // Compass ribbon along the top, with a caret toward the next objective.
     const compassW = Math.min(520, wv * 0.46);

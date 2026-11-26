@@ -39,12 +39,12 @@ function announce(text) {
 
 function runShot(name) {
   const secParam = Number.parseFloat(params.get('sec') ?? '');
-  const { world: staged, label } = stageShot(name, seed, secParam);
-  window.__debug = { world, renderer };
+  const { world: staged, label, camera } = stageShot(name, seed, secParam);
+  window.__debug = { world, renderer, camera };
   Object.assign(world.state, staged.state);
   let painted = 0;
   function paint() {
-    renderer.draw(world.state, 1 / 60, painted === 0);
+    renderer.draw(world.state, 1 / 60, painted === 0, camera);
     hud.draw(world, { label });
     painted += 1;
     if (painted < 3) requestAnimationFrame(paint);

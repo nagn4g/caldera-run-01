@@ -266,10 +266,12 @@ function buildRings(scene, course) {
     const torus = new THREE.Mesh(new THREE.TorusGeometry(ring.r, ring.r * 0.085, 10, 40), mat);
     torus.castShadow = true;
     group.add(torus);
+    // Halo: a thin bloom just behind the solid torus. Kept deliberately tight (thin tube, low
+    // opacity) so the ring reads as a clean hoop, not a bloated disc; the main torus is untouched.
     const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(ring.r * 0.98, ring.r * 0.032, 6, 24),
+      new THREE.TorusGeometry(ring.r * 0.98, ring.r * 0.017, 6, 28),
       new THREE.MeshBasicMaterial({
-        color: isGate ? 0x7ff4ff : 0xffa03a, transparent: true, opacity: 0.16, depthWrite: false,
+        color: isGate ? 0x7ff4ff : 0xffa03a, transparent: true, opacity: 0.1, depthWrite: false,
       }),
     );
     group.add(halo);
@@ -297,34 +299,45 @@ function createChase() {
   return { heading: 0, y: 0, initialised: false };
 }
 
-function placeCamera(camera, state, chase, dt, snap = false) {
+/**
+ * Camera framing presets. `chase` is the flight camera; `vista` is a lower, pulled-back approach
+ * used only for the staged vista shot, aiming a little above the nose so the coastal terrain and
+ * the volcano fill the frame behind the plane instead of looking straight down on it.
+ */
+const CAMERA_MODES = {
+  chase: { back: 21, up: 7.2, ahead: 34, lookUp: -2.4, lag: true },
+  vista: { back: 26, up: 4.5, ahead: 55, lookUp: 11, lag: false },
+};
+
+function placeCamera(camera, state, chase, dt, snap = false, mode = 'chase') {
+  const preset = CAMERA_MODES[mode] ?? CAMERA_MODES.chase;
   if (!chase.initialised) {
     chase.heading = state.heading;
     chase.pitch = 0;
     chase.initialised = true;
   }
-  const follow = Math.min(1, dt * 3.2);
+  // The vista shot snaps straight to its framing so one staged frame carries no follow lag.
+  const follow = preset.lag ? Math.min(1, dt * 3.2) : 1;
   chase.heading = ((chase.heading + ((((state.heading - chase.heading + 540) % 360) - 180)) * follow) + 360) % 360;
-  chase.pitch += (state.pitch * 0.5 - chase.pitch) * Math.min(1, dt * 2.5);
+  chase.pitch += (state.pitch * 0.5 - chase.pitch) * (preset.lag ? Math.min(1, dt * 2.5) : 1);
 
-  const back = 21;
-  const up = 7.2;
+  const { back, up, ahead, lookUp } = preset;
   const rad = chase.heading * DEG;
   const px = state.pos.x - Math.sin(rad) * back;
   const pz = state.pos.z + Math.cos(rad) * back;
   const py = state.pos.y + up + Math.sin(chase.pitch) * 4;
-  const kx = snap ? 1 : Math.min(1, dt * 9);
-  const ky = snap ? 1 : Math.min(1, dt * 7);
-  const kz = snap ? 1 : Math.min(1, dt * 9);
+  const kx = snap || !preset.lag ? 1 : Math.min(1, dt * 9);
+  const ky = snap || !preset.lag ? 1 : Math.min(1, dt * 7);
+  const kz = snap || !preset.lag ? 1 : Math.min(1, dt * 9);
   camera.position.x += (px - camera.position.x) * kx;
   camera.position.y += (py - camera.position.y) * ky;
   camera.position.z += (pz - camera.position.z) * kz;
 
   camera.up.set(0, 1, 0);
   camera.lookAt(
-    state.pos.x + Math.sin(state.heading * DEG) * 34,
-    state.pos.y + Math.sin(state.pitch) * 18 - 2.4,
-    state.pos.z - Math.cos(state.heading * DEG) * 34,
+    state.pos.x + Math.sin(state.heading * DEG) * ahead,
+    state.pos.y + Math.sin(state.pitch) * 18 + lookUp,
+    state.pos.z - Math.cos(state.heading * DEG) * ahead,
   );
   camera.rotateZ(-state.roll * 0.42);
   camera.fov = 56 + Math.min(14, Math.abs(state.speed - 40) * 0.5);
@@ -352,7 +365,7 @@ function finishSetup(renderer, scene, camera, seed, course) {
   }
 
   /** Move everything to match one world state and draw a frame. */
-  function draw(state, dt = 1 / 60, snap = false) {
+  function draw(state, dt = 1 / 60, snap = false, cameraMode = 'chase') {
     clock += dt;
     const rad = state.heading * DEG;
     plane.group.position.set(state.pos.x, state.pos.y, state.pos.z);
@@ -370,7 +383,7 @@ function finishSetup(renderer, scene, camera, seed, course) {
       ring.group.scale.setScalar(isNext ? pulse : 1);
       ring.torus.material.opacity = cleared ? 0.32 : 1;
       ring.torus.material.transparent = cleared;
-      ring.halo.material.opacity = cleared ? 0.03 : isNext ? 0.15 + Math.sin(clock * 4) * 0.05 : 0.07;
+      ring.halo.material.opacity = cleared ? 0.02 : isNext ? 0.09 + Math.sin(clock * 4) * 0.03 : 0.045;
     });
 
     const flash = state.ringFlash;
@@ -379,14 +392,14 @@ function finishSetup(renderer, scene, camera, seed, course) {
       rings.forEach((ring) => {
         if (ring.spec.x === spec.x && ring.spec.z === spec.z) {
           ring.group.scale.setScalar(1 + flash * 0.22);
-          ring.halo.material.opacity = 0.1 + flash * 0.35;
+          ring.halo.material.opacity = 0.08 + flash * 0.17;
         }
       });
     }
 
     sea.position.x = state.pos.x * 0.92;
     sea.position.z = state.pos.z * 0.92;
-    placeCamera(camera, state, chase, dt, snap);
+    placeCamera(camera, state, chase, dt, snap, cameraMode);
     renderer.render(scene, camera);
   }
 

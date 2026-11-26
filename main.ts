@@ -16,6 +16,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } f
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
+import { shotTable, stageShot } from './game/src/shots.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
@@ -39,6 +40,33 @@ for (const name of shots) {
   if (bytes > 262144) {
     throw new Error(`screenshot ${name} is ${bytes} bytes, over the 262144-byte cap`);
   }
+}
+
+// Revision checks that run for real on every build: the four judged scenes must be four distinct
+// moments, and the vista scene must be the low approach camera rather than the old top-down view.
+const judged = ['cover', 'ring', 'approach', 'vista'];
+const table = shotTable();
+for (const name of judged) {
+  if (!table[name]) throw new Error(`shot table missing judged scene "${name}"`);
+}
+const moments = new Set(judged.map((name) => table[name].seconds));
+if (moments.size !== judged.length) {
+  throw new Error(`judged shots must be distinct moments, got ${[...moments].join(', ')}`);
+}
+if (table.vista.camera !== 'vista') {
+  throw new Error(`vista shot must use the low approach camera, found "${table.vista.camera}"`);
+}
+
+// Stage the vista frame the way the browser does and confirm it is a low, level pass: the plane
+// well under a kilometre up and still in the scan, so the coast and volcano share the frame.
+const vista = stageShot('vista', Number(process.env.SHOT_SEED ?? 1));
+const vistaAgl = vista.world.state.pos.y - vista.world.ground();
+if (vista.camera !== 'vista') throw new Error('staged vista frame did not carry the vista camera');
+if (!(vistaAgl > 120 && vistaAgl < 420)) {
+  throw new Error(`vista frame not a low coastal pass: ${vistaAgl.toFixed(0)} m AGL`);
+}
+if (vista.world.state.phase !== 'SCAN') {
+  throw new Error(`vista frame should still be scanning, phase "${vista.world.state.phase}"`);
 }
 
 mkdirSync(out, { recursive: true });
